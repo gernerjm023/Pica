@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Feedback System — Standalone</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    /* small custom spinner used in JS when submitting */
+    .lds-ring{display:inline-block;transform:translateZ(0)}
+    .lds-ring>div{box-sizing:border-box;display:block;position:relative;width:18px;height:18px;border:3px solid rgba(255,255,255,.6);border-radius:50%;animation:lds-ring 1.2s cubic-bezier(.5,0,.5,1) infinite;border-color:#fff transparent transparent transparent}
+    .lds-ring>div:nth-child(1){animation-delay:-.45s}
+    .lds-ring>div:nth-child(2){animation-delay:-.3s}
+    .lds-ring>div:nth-child(3){animation-delay:-.15s}
+    @keyframes lds-ring {0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    /* subtle focus outlines for keyboard accessibility */
+    :focus { outline: 3px solid rgba(99,102,241,0.25); outline-offset: 2px; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-6 shadow-md">
+    <div class="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold">Student Feedback System</h1>
+        <p class="text-indigo-100/85 mt-1 text-sm">A standalone, responsive feedback app — no database required.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="userIdBadge" class="px-3 py-1 bg-indigo-800/30 rounded-full text-indigo-100 text-sm font-medium" aria-live="polite">
+          User ID: <span id="userIdShort">--</span>
+        </div>
+        <button id="exportCsvBtn" class="bg-white text-indigo-600 px-3 py-1 rounded-lg shadow hover:shadow-md text-sm" title="Export feedback to CSV">Export CSV</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="container mx-auto p-4 md:p-8 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Form column -->
+    <section class="lg:col-span-1 bg-white dark:bg-slate-800 rounded-xl shadow p-5">
+      <h2 class="text-lg font-semibold mb-3">Submit Feedback</h2>
+
+      <form id="feedbackForm" class="space-y-4" autocomplete="off" novalidate>
+        <div>
+          <label for="name" class="block text-sm font-medium mb-1">Name <span class="text-red-500">*</span></label>
+          <input id="name" name="name" type="text" required maxlength="60"
+                 class="w-full p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-400 transition" />
+          <p id="nameHelp" class="sr-only">Enter your full name.</p>
+        </div>
+
+        <div>
+          <label for="message" class="block text-sm font-medium mb-1">Feedback <span class="text-red-500">*</span></label>
+          <textarea id="message" name="message" rows="5" required maxlength="1000"
+                    class="w-full p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-400 transition"></textarea>
+          <div class="flex justify-between text-xs text-slate-400 mt-1">
+            <span id="charsLeft">1000 chars left</span>
+            <span id="draftIndicator" class="italic">Draft autosaved</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="submitButton" type="submit"
+                  class="inline-flex items-center justify-center gap-2 flex-1 bg-indigo-600 text-white p-3 rounded-lg font-medium hover:bg-indigo-700 focus:ring-4">
+            <svg id="sendIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2.94 2.27a.75.75 0 0 0-.01 1.06l6.75 7.02a.75.75 0 0 0 1.06.01L17.73 4.7a.75.75 0 0 0-.98-1.14L9.66 9.5 2.94 2.27z"/><path d="M9.66 10.75l7.09 7.35a.75.75 0 0 1-1.06 1.06L8.6 11.81a.75.75 0 0 1 .06-1.06l.99-.99z"/></svg>
+            <span>Send Feedback</span>
+          </button>
+
+          <button id="clearDraftBtn" type="button" title="Clear draft" class="px-4 py-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-sm">
+            Clear
+          </button>
+        </div>
+      </form>
+
+      <div class="mt-4 text-xs text-slate-400">
+        <p><strong>Tips:</strong> Use real details to help administrators respond. You can edit or delete your feedback after posting.</p>
+      </div>
+    </section>
+
+    <!-- Center column: list and controls -->
+    <section class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl shadow p-5 flex flex-col">
+      <div class="flex items-center justify-between gap-4 mb-4">
+        <div class="flex items-center gap-3 w-full">
+          <input id="searchInput" type="search" placeholder="Search feedback or names..." aria-label="Search feedback"
+                 class="flex-1 p-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-400" />
+          <select id="sortSelect" aria-label="Sort feedback" class="p-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-700">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name-asc">Name A → Z</option>
+            <option value="name-desc">Name Z → A</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="addSampleBtn" class="text-sm px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100">Add Sample</button>
+          <button id="clearAllBtn" class="text-sm px-3 py-2 bg-red-50 text-red-600 rounded-lg border border-red-100">Clear All</button>
+        </div>
+      </div>
+
+      <!-- Feedback list -->
+      <div id="feedbackContainer" class="flex-1 overflow-y-auto divide-y divide-gray-100 rounded-md">
+        <ul id="feedbackList" class="space-y-0">
+          <!-- dynamic -->
+        </ul>
+      </div>
+
+      <div class="mt-3 text-xs text-slate-400">Showing <span id="visibleCount">0</span> feedback(s).</div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white dark:bg-slate-900 p-4 text-center text-xs text-slate-500">
+    <div class="container mx-auto">© <span id="year"></span> | Student Feedback System (stored in browser)</div>
+  </footer>
+
+  <!-- Toast / undo -->
+  <div id="toast" role="status" aria-live="polite" class="fixed right-4 bottom-6 hidden z-50">
+    <div class="bg-slate-800 text-white px-4 py-2 rounded-lg shadow flex items-center gap-3">
+      <span id="toastMsg">Deleted</span>
+      <button id="undoBtn" class="underline text-indigo-200">Undo</button>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/40">
+    <div class="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
+      <h3 class="font-semibold text-lg mb-3">Confirm action</h3>
+      <p id="confirmText" class="text-sm text-slate-600 dark:text-slate-300 mb-4">Are you sure?</p>
+      <div class="flex justify-end gap-3">
+        <button id="cancelConfirm" class="px-3 py-2 rounded-lg border">Cancel</button>
+        <button id="okConfirm" class="px-3 py-2 rounded-lg bg-red-600 text-white">Yes, continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**********************************************************
+     * Student Feedback System - Standalone (no DB) - v1
+     * Features:
+     *  - localStorage persistence
+     *  - Create / Read / Update / Delete (with undo)
+     *  - Search, Sort, Export CSV, Add sample data, Clear all
+     *  - Autosave draft & input validation
+     *  - Accessible & responsive
+     **********************************************************/
+
+    /* -------------------------
+       Constants & DOM references
+       ------------------------- */
+    const STORAGE_KEY = 'sfs_feedbacks_v1';
+    const DRAFT_KEY = 'sfs_feedback_draft_v1';
+    const userIdShortEl = document.getElementById('userIdShort');
+    const userIdBadge = document.getElementById('userIdBadge');
+    const nameInput = document.getElementById('name');
+    const messageInput = document.getElementById('message');
+    const charsLeft = document.getElementById('charsLeft');
+    const form = document.getElementById('feedbackForm');
+    const feedbackListEl = document.getElementById('feedbackList');
+    const visibleCountEl = document.getElementById('visibleCount');
+    const yearEl = document.getElementById('year');
+    const submitButton = document.getElementById('submitButton');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const searchInput = document.getElementById('searchInput');
+    const sortSelect = document.getElementById('sortSelect');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const addSampleBtn = document.getElementById('addSampleBtn');
+    const clearDraftBtn = document.getElementById('clearDraftBtn');
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+    const undoBtn = document.getElementById('undoBtn');
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmText = document.getElementById('confirmText');
+    const cancelConfirm = document.getElementById('cancelConfirm');
+    const okConfirm = document.getElementById('okConfirm');
+
+    let feedbacks = []; // in-memory
+    let lastDeleted = null; // for undo
+    let pendingConfirm = null; // for confirm modal actions
+    let currentEditId = null; // if editing
+    const MAX_CHARS = 1000;
+
+    /* -------------------------
+       Utility helpers
+       ------------------------- */
+    const uid = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+      return 'id-' + Math.random().toString(36).slice(2, 9);
+    };
+
+    const now = () => new Date().toISOString();
+
+    function saveToStorage() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(feedbacks));
+    }
+
+    function loadFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error('Failed to parse storage:', e);
+        return [];
+      }
+    }
+
+    function saveDraft() {
+      const draft = { name: nameInput.value || '', message: messageInput.value || '' };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      // show small indicator briefly
+      const el = document.getElementById('draftIndicator');
+      if (el) {
+        el.textContent = 'Draft autosaved';
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.textContent = 'Draft saved', 1200);
+      }
+    }
+
+    function loadDraft() {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (!raw) return;
+        const draft = JSON.parse(raw);
+        if (draft.name) nameInput.value = draft.name;
+        if (draft.message) messageInput.value = draft.message;
+        updateCharsLeft();
+      } catch (e) {
+        console.warn('No draft to load or invalid draft content.');
+      }
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString();
+    }
+
+    /* Debounce helper */
+    function debounce(fn, wait = 300) {
+      let t;
+      return function (...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+      };
+    }
+
+    /* -------------------------
+       Rendering
+       ------------------------- */
+
+    function render() {
+      // Filter & sort
+      const q = searchInput.value.trim().toLowerCase();
+      const sort = sortSelect.value;
+
+      let list = [...feedbacks];
+
+      if (q) {
+        list = list.filter(f =>
+          (f.name || '').toLowerCase().includes(q) ||
+          (f.message || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (sort === 'newest') list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      if (sort === 'oldest') list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (sort === 'name-asc') list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      if (sort === 'name-desc') list.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+
+      // Render
+      feedbackListEl.innerHTML = '';
+      if (list.length === 0) {
+        feedbackListEl.innerHTML = `<li class="p-6 text-center text-slate-500">No feedback yet. Be the first!</li>`;
+      } else {
+        const fragment = document.createDocumentFragment();
+        list.forEach(item => {
+          const li = document.createElement('li');
+          li.className = 'p-4 hover:bg-gray-50 dark:hover:bg-slate-700 flex flex-col md:flex-row md:justify-between gap-3';
+          li.setAttribute('data-id', item.id);
+
+          const left = document.createElement('div');
+          left.className = 'flex-1';
+          const name = document.createElement('div');
+          name.className = 'font-semibold text-indigo-700 dark:text-indigo-300';
+          name.textContent = item.name || 'Anonymous';
+
+          const message = document.createElement('div');
+          message.className = 'mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-200';
+          message.textContent = item.message;
+
+          const meta = document.createElement('div');
+          meta.className = 'mt-2 text-xs text-slate-400';
+          meta.textContent = `Posted: ${formatDate(item.createdAt)} • ID: ${shortId(item.id)}`;
+
+          left.appendChild(name);
+          left.appendChild(message);
+          left.appendChild(meta);
+
+          const actions = document.createElement('div');
+          actions.className = 'flex items-start gap-2 mt-3 md:mt-0 md:items-center';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'px-3 py-1 bg-yellow-50 text-yellow-700 rounded-md text-sm';
+          editBtn.textContent = 'Edit';
+          editBtn.title = 'Edit feedback';
+          editBtn.addEventListener('click', () => startEdit(item.id));
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'px-3 py-1 bg-red-50 text-red-700 rounded-md text-sm';
+          delBtn.textContent = 'Delete';
+          delBtn.title = 'Delete feedback';
+          delBtn.addEventListener('click', () => confirmAction(() => deleteFeedback(item.id), `Delete feedback from "${item.name || 'Anonymous'}"? This cannot be undone.`));
+
+          actions.appendChild(editBtn);
+          actions.appendChild(delBtn);
+
+          li.appendChild(left);
+          li.appendChild(actions);
+          fragment.appendChild(li);
+        });
+
+        feedbackListEl.appendChild(fragment);
+      }
+
+      visibleCountEl.textContent = list.length;
+    }
+
+    function shortId(id) {
+      return id?.slice?.(0, 8) ?? id;
+    }
+
+    /* -------------------------
+       CRUD operations
+       ------------------------- */
+
+    function createFeedback(name, message) {
+      const entry = {
+        id: uid(),
+        name: name.trim(),
+        message: message.trim(),
+        createdAt: now(),
+        updatedAt: null
+      };
+      feedbacks.unshift(entry);
+      saveToStorage();
+      render();
+      return entry;
+    }
+
+    function updateFeedback(id, newData) {
+      const idx = feedbacks.findIndex(f => f.id === id);
+      if (idx === -1) return false;
+      feedbacks[idx] = { ...feedbacks[idx], ...newData, updatedAt: now() };
+      saveToStorage();
+      render();
+      return true;
+    }
+
+    function deleteFeedback(id) {
+      const idx = feedbacks.findIndex(f => f.id === id);
+      if (idx === -1) return;
+      lastDeleted = feedbacks[idx];
+      feedbacks.splice(idx, 1);
+      saveToStorage();
+      render();
+      showToast(`Deleted feedback from "${lastDeleted.name || 'Anonymous'}"`, true);
+    }
+
+    function undoDelete() {
+      if (!lastDeleted) return;
+      feedbacks.unshift(lastDeleted);
+      saveToStorage();
+      render();
+      lastDeleted = null;
+      hideToast();
+    }
+
+    function clearAll() {
+      feedbacks = [];
+      saveToStorage();
+      render();
+    }
+
+    /* -------------------------
+       UI Helpers
+       ------------------------- */
+
+    function showToast(msg, showUndo = false) {
+      toastMsg.textContent = msg;
+      undoBtn.style.display = showUndo ? 'inline' : 'none';
+      toast.classList.remove('hidden');
+      // auto hide after 6s if no undo provided
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => {
+        toast.classList.add('hidden');
+        lastDeleted = null;
+      }, 6000);
+    }
+
+    function hideToast() {
+      toast.classList.add('hidden');
+      clearTimeout(toast._t);
+    }
+
+    function confirmAction(actionFn, message) {
+      pendingConfirm = actionFn;
+      confirmText.textContent = message;
+      confirmModal.classList.remove('hidden');
+      // focus for accessibility
+      okConfirm.focus();
+    }
+
+    /* -------------------------
+       Form & interactions
+       ------------------------- */
+
+    function updateCharsLeft() {
+      const remaining = MAX_CHARS - (messageInput.value?.length || 0);
+      charsLeft.textContent = `${remaining} chars left`;
+    }
+
+    function resetForm() {
+      form.reset();
+      currentEditId = null;
+      submitButton.querySelector('span')?.textContent && (submitButton.querySelector('span').textContent = 'Send Feedback');
+      const sendIcon = document.getElementById('sendIcon');
+      if (sendIcon) sendIcon.style.display = '';
+      updateCharsLeft();
+      // clear draft
+      localStorage.removeItem(DRAFT_KEY);
+    }
+
+    function startEdit(id) {
+      const item = feedbacks.find(f => f.id === id);
+      if (!item) return;
+      nameInput.value = item.name;
+      messageInput.value = item.message;
+      currentEditId = id;
+      updateCharsLeft();
+      submitButton.querySelector('span').textContent = 'Update';
+      // move focus to message
+      messageInput.focus();
+    }
+
+    /* -------------------------
+       CSV Export
+       ------------------------- */
+    function exportCSV() {
+      if (!feedbacks.length) {
+        alert('No feedbacks to export.');
+        return;
+      }
+      const header = ['id', 'name', 'message', 'createdAt', 'updatedAt'];
+      const rows = feedbacks.map(f => [f.id, csvEscape(f.name), csvEscape(f.message), f.createdAt, f.updatedAt || '']);
+      const csv = [header, ...rows].map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `feedbacks_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvEscape(text = '') {
+      // simple escape: wrap in quotes and double any internal quotes
+      const t = String(text).replace(/"/g, '""');
+      return `"${t}"`;
+    }
+
+    /* -------------------------
+       Events & init
+       ------------------------- */
+
+    // Load initial data
+    function init() {
+      yearEl.textContent = new Date().getFullYear();
+      feedbacks = loadFromStorage();
+
+      // Safety: ensure array
+      if (!Array.isArray(feedbacks)) feedbacks = [];
+
+      // generate & show short user id
+      const generatedUserId = shortId(uid());
+      userIdShortEl.textContent = generatedUserId;
+
+      // load draft
+      loadDraft();
+
+      // render
+      render();
+
+      // event listeners
+      form.addEventListener('submit', handleFormSubmit);
+      messageInput.addEventListener('input', debounce(() => {
+        updateCharsLeft();
+        saveDraft();
+      }, 200));
+      nameInput.addEventListener('input', debounce(saveDraft, 400));
+      searchInput.addEventListener('input', debounce(render, 200));
+      sortSelect.addEventListener('change', render);
+
+      exportCsvBtn.addEventListener('click', exportCSV);
+      clearAllBtn.addEventListener('click', () => confirmAction(() => { clearAll(); }, 'Clear ALL feedback? This will remove all entries permanently.'));
+      addSampleBtn.addEventListener('click', addSampleData);
+      undoBtn.addEventListener('click', undoDelete);
+
+      // toast close on click
+      toast.addEventListener('click', hideToast);
+
+      // confirm modal handlers
+      cancelConfirm.addEventListener('click', () => { pendingConfirm = null; confirmModal.classList.add('hidden'); });
+      okConfirm.addEventListener('click', () => {
+        if (typeof pendingConfirm === 'function') pendingConfirm();
+        pendingConfirm = null;
+        confirmModal.classList.add('hidden');
+      });
+
+      // clear draft
+      clearDraftBtn.addEventListener('click', () => {
+        localStorage.removeItem(DRAFT_KEY);
+        nameInput.value = '';
+        messageInput.value = '';
+        updateCharsLeft();
+      });
+
+      // keyboard: press Esc to cancel edit/close modals
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          if (!confirmModal.classList.contains('hidden')) { confirmModal.classList.add('hidden'); pendingConfirm = null; }
+          else if (!toast.classList.contains('hidden')) { hideToast(); }
+          else { resetForm(); }
+        }
+      });
+    }
+
+    async function handleFormSubmit(ev) {
+      ev.preventDefault();
+
+      // small validation
+      const name = nameInput.value.trim();
+      const message = messageInput.value.trim();
+      if (!name) { nameInput.focus(); return alert('Please enter your name.'); }
+      if (!message) { messageInput.focus(); return alert('Please enter feedback.'); }
+      if (message.length > MAX_CHARS) { alert('Message too long.'); return; }
+
+      // disable button & show spinner
+      setSubmitting(true);
+
+      try {
+        if (currentEditId) {
+          updateFeedback(currentEditId, { name, message });
+          resetForm();
+          showToast('Feedback updated.', false);
+        } else {
+          const created = createFeedback(name, message);
+          // optimistic UX: flash success
+          showModalTemporary('Feedback sent!', 1500);
+          // reset form
+          resetForm();
+        }
+      } catch (err) {
+        console.error('Failed to store feedback:', err);
+        alert('An error occurred while saving feedback. See console for details.');
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
+    function setSubmitting(on) {
+      submitButton.disabled = on;
+      if (on) {
+        // show spinner
+        submitButton.innerHTML = `<span class="lds-ring"><div></div><div></div><div></div><div></div></span><span class="ml-2">Sending...</span>`;
+      } else {
+        submitButton.innerHTML = `<svg id="sendIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2.94 2.27a.75.75 0 0 0-.01 1.06l6.75 7.02a.75.75 0 0 0 1.06.01L17.73 4.7a.75.75 0 0 0-.98-1.14L9.66 9.5 2.94 2.27z"/><path d="M9.66 10.75l7.09 7.35a.75.75 0 0 1-1.06 1.06L8.6 11.81a.75.75 0 0 1 .06-1.06l.99-.99z"/></svg><span>Send Feedback</span>`;
+      }
+    }
+
+    function showModalTemporary(message, duration = 1200) {
+      // small ephemeral modal using confirmModal element for simplicity
+      const original = confirmText.textContent;
+      confirmText.textContent = message;
+      confirmModal.classList.remove('hidden');
+      okConfirm.style.display = 'none';
+      cancelConfirm.style.display = 'none';
+      setTimeout(() => {
+        confirmText.textContent = original;
+        confirmModal.classList.add('hidden');
+        okConfirm.style.display = '';
+        cancelConfirm.style.display = '';
+      }, duration);
+    }
+
+    /* -------------------------
+       Sample & misc
+       ------------------------- */
+
+    function addSampleData() {
+      const samples = [
+        { name: 'Alyssa Cruz', message: 'Great lecture on middleware! Learned a lot.' },
+        { name: 'Mark Tan', message: 'Could we get slides after class? Would help review.' },
+        { name: 'Jessa Martinez', message: 'The lab needs more working routers for testing.' }
+      ];
+      samples.forEach(s => createFeedback(s.name, s.message));
+    }
+
+    /* -------------------------
+       Init
+       ------------------------- */
+    init();
+
+    // expose some functions for debugging in dev console (optional)
+    window.sfs = {
+      createFeedback, updateFeedback, deleteFeedback, feedbacks, saveToStorage, loadFromStorage
+    };
+
+  </script>
+</body>
+</html>
